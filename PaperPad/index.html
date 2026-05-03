@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>PaperPad - Your Voice Notebook</title>
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#0d47a1" />
+<meta name="description" content="Speak your notes, save as PDF or Word. A friendly notebook for everyone." />
+
+<!-- iOS PWA support -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="PaperPad" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png" />
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: 'Georgia', 'Times New Roman', serif;
+    background: #cfe8f5;
+    color: #1a2738;
+    min-height: 100vh;
+    font-size: 18px;
+    line-height: 1.6;
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior-y: contain;
+  }
+  #root {
+    padding: 16px;
+    max-width: 760px;
+    margin: 0 auto;
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
+    padding-top: max(16px, env(safe-area-inset-top));
+  }
+  h1 { font-size: 38px; margin: 0 0 4px 0; color: #0d47a1; text-align: center; }
+  .subtitle { text-align: center; color: #1976d2; font-size: 17px; margin-bottom: 18px; font-style: italic; }
+  .card {
+    background: #ffffff;
+    border: 3px solid #7fb8e0;
+    border-radius: 14px;
+    padding: 18px;
+    margin-bottom: 16px;
+    box-shadow: 0 4px 12px rgba(13,71,161,0.08);
+  }
+  .instructions { background: #e1f5fe; border-left: 8px solid #5fa6d6; }
+  .instructions h2 { margin: 0 0 8px 0; color: #0d47a1; font-size: 22px; }
+  .instructions p { margin: 6px 0; font-size: 17px; }
+  .voice-cmds .cmd { display: block; margin-bottom: 4px; font-size: 17px; }
+  .highlight { background: #fff176; padding: 2px 8px; border-radius: 6px; font-weight: bold; color: #0d47a1; }
+  label { display: block; font-size: 18px; font-weight: bold; margin-bottom: 6px; color: #0d47a1; }
+  input[type="text"], input[type="number"], textarea {
+    width: 100%;
+    font-size: 20px;
+    padding: 12px 14px;
+    border: 3px solid #7fb8e0;
+    border-radius: 10px;
+    background: #ffffff;
+    font-family: inherit;
+    color: #1a2738;
+    margin-bottom: 10px;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  input:focus, textarea:focus {
+    outline: none;
+    border-color: #0d47a1;
+    box-shadow: 0 0 0 3px rgba(13,71,161,0.2);
+  }
+  textarea { min-height: 110px; resize: vertical; }
+  .btn {
+    font-size: 20px;
+    font-family: inherit;
+    padding: 14px 22px;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    font-weight: bold;
+    margin: 5px;
+    box-shadow: 0 4px 0 rgba(13,71,161,0.18);
+    min-height: 56px;
+    color: white;
+    touch-action: manipulation;
+  }
+  .btn:active { transform: translateY(2px); box-shadow: 0 2px 0 rgba(13,71,161,0.18); }
+  .btn-primary { background: #2e7d32; }
+  .btn-listen { background: #c0392b; }
+  .btn-listening { background: #27ae60; animation: pulse 1.5s infinite; }
+  .btn-add { background: #0d47a1; }
+  .btn-table { background: #1e6091; }
+  .btn-clear { background: #607d8b; }
+  .btn-export-pdf { background: #c0392b; }
+  .btn-export-word { background: #1565c0; }
+  .btn-export-txt { background: #6a1b9a; }
+  .btn-delete { background: #ef5350; font-size: 15px; padding: 8px 12px; min-height: 0; }
+  .btn-small { font-size: 16px; padding: 10px 16px; min-height: 0; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
+  .status { display: inline-block; padding: 5px 12px; border-radius: 20px; font-size: 15px; font-weight: bold; margin-left: 8px; vertical-align: middle; }
+  .status-on { background: #c8e6c9; color: #1b5e20; }
+  .status-off { background: #ffcdd2; color: #b71c1c; }
+  .toast {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+    background: #0d47a1; color: white;
+    padding: 10px 18px; border-radius: 24px;
+    font-size: 16px; font-weight: bold;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+    z-index: 1000;
+    animation: toast-pop 0.3s ease-out;
+    max-width: 90%;
+    text-align: center;
+  }
+  @keyframes toast-pop { from { opacity: 0; transform: translate(-50%, -10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+  .item-list { list-style: none; padding: 0; margin: 0; }
+  .item-row {
+    display: flex; align-items: flex-start;
+    background: #f5fbff;
+    border: 2px solid #5fa6d6;
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    font-size: 18px;
+    gap: 10px;
+  }
+  .bullet-dot { color: #0d47a1; font-size: 24px; line-height: 1; flex-shrink: 0; }
+  .bullet-text { flex: 1; word-wrap: break-word; overflow-wrap: anywhere; }
+  .table-item { display: block; padding: 10px; }
+  .notes-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 17px; }
+  .notes-table th, .notes-table td { border: 2px solid #7fb8e0; padding: 8px 10px; text-align: left; }
+  .notes-table th { background: #e1f5fe; color: #0d47a1; font-weight: bold; }
+  .empty-state { text-align: center; color: #5b7c8c; font-style: italic; padding: 20px 12px; font-size: 17px; }
+  .live-preview {
+    background: #e3f2fd;
+    border: 2px dashed #5fa6d6;
+    padding: 10px 12px;
+    border-radius: 10px;
+    min-height: 44px;
+    font-size: 17px;
+    color: #0d47a1;
+    margin-top: 8px;
+    word-wrap: break-word;
+  }
+  .button-row {
+    display: flex; flex-wrap: wrap; justify-content: center;
+    margin-top: 10px; gap: 4px;
+  }
+  .export-section { text-align: center; background: #e1f5fe; border: 3px solid #5fa6d6; }
+  .error {
+    background: #ffcdd2; color: #b71c1c;
+    padding: 12px 16px; border-radius: 8px;
+    margin-bottom: 14px; font-size: 17px;
+  }
+  .install-banner {
+    background: #b3e5fc; color: #01579b;
+    border: 2px solid #4fc3f7;
+    padding: 10px 14px; border-radius: 10px;
+    margin-bottom: 14px; font-size: 16px;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; flex-wrap: wrap;
+  }
+  .install-banner button {
+    background: #01579b; color: white; border: none;
+    padding: 8px 14px; border-radius: 8px; font-size: 15px;
+    cursor: pointer; font-weight: bold;
+  }
+  .install-banner .close-x {
+    background: transparent; color: #01579b; border: 1px solid #01579b;
+    padding: 4px 10px;
+  }
+  .table-builder { background: #e1f5fe; border: 3px solid #1e6091; }
+  .table-builder h2 { margin: 0 0 8px 0; color: #1e6091; font-size: 22px; }
+  .table-builder .hint { font-size: 16px; color: #1e6091; margin-bottom: 12px; }
+  .row-line { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  .row-line input { flex: 1; margin: 0; }
+  .row-num { font-size: 14px; color: #1e6091; font-weight: bold; min-width: 40px; }
+  .row-num.header-tag { background: #1e6091; color: white; padding: 2px 6px; border-radius: 4px; }
+  .footer { text-align: center; color: #5b7c8c; font-size: 14px; margin-top: 20px; padding: 16px 8px; }
+  details summary {
+    cursor: pointer;
+    font-weight: bold;
+    color: #0d47a1;
+    padding: 4px 0;
+    font-size: 17px;
+  }
+  details[open] summary { margin-bottom: 8px; }
+  @media (min-width: 640px) {
+    html, body { font-size: 19px; }
+    h1 { font-size: 46px; }
+    label { font-size: 22px; }
+    input[type="text"], input[type="number"], textarea { font-size: 22px; }
+    .btn { font-size: 22px; padding: 16px 26px; }
+    #root { padding: 24px; }
+    .card { padding: 22px; }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+// === Voice command patterns ===
+const NEXT_BULLET_REGEX = /\b(?:next|new)\s*(?:point|bullet)\b/gi;
+const ERASE_REGEX = /\b(?:erase|delete|remove|scratch|undo|cancel)\s+(?:(?:the|that|this|a|my|previous)\s+){0,3}(?:that|this|it|last(?:\s+(?:one|bullet|point|item|line|note))?|one|bullet|point|item|line|note)\b/gi;
+const TABLE_START_REGEX = /\b(?:make|create|start|new|insert|add)\s*(?:a\s*)?table\b/gi;
+const TABLE_FINISH_REGEX = /\b(?:finish|end|done|complete|close|save)\s*(?:the\s+|with\s+)?table\b|\btable\s+(?:done|finished|complete)\b/gi;
+const TABLE_CANCEL_REGEX = /\bcancel\s*(?:the\s+)?table\b|\bclose\s*(?:the\s+)?table\b(?!\s*now)/gi;
+const NEXT_ROW_REGEX = /\b(?:next|new)\s+row\b/gi;
+
+// === Number words to digits ===
+const NUM_ONES = {zero:0, one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9, ten:10, eleven:11, twelve:12, thirteen:13, fourteen:14, fifteen:15, sixteen:16, seventeen:17, eighteen:18, nineteen:19};
+const NUM_TENS = {twenty:20, thirty:30, forty:40, fifty:50, sixty:60, seventy:70, eighty:80, ninety:90};
+const NUM_SCALES = {hundred:100, thousand:1000, million:1000000, billion:1000000000};
+const ALL_NUM_WORDS = Object.keys({...NUM_ONES, ...NUM_TENS, ...NUM_SCALES}).join("|");
+const NUM_RUN_REGEX = new RegExp(`\\b(?:${ALL_NUM_WORDS})(?:[\\s-]+(?:${ALL_NUM_WORDS}))*\\b`, "gi");
+
+function parseNumberWords(words) {
+  let total = 0, current = 0;
+  for (const w of words) {
+    const lw = w.toLowerCase();
+    if (NUM_ONES[lw] !== undefined) current += NUM_ONES[lw];
+    else if (NUM_TENS[lw] !== undefined) current += NUM_TENS[lw];
+    else if (NUM_SCALES[lw] !== undefined) {
+      const v = NUM_SCALES[lw];
+      if (v === 100) current = (current || 1) * 100;
+      else { total += (current || 1) * v; current = 0; }
+    }
+  }
+  return total + current;
+}
+function wordsToDigits(text) {
+  return text.replace(NUM_RUN_REGEX, (m) => {
+    const tokens = m.toLowerCase().replace(/-/g, " ").split(/\s+/).filter(Boolean);
+    if (tokens.length === 1 && (tokens[0] === "a" || tokens[0] === "an")) return m;
+    return parseNumberWords(tokens).toString();
+  });
+}
+
+// Capitalise first letter of a sentence so dictation reads cleanly
+function tidy(text) {
+  let t = wordsToDigits(text).replace(/\s+/g, " ").trim();
+  if (t.length > 0) t = t[0].toUpperCase() + t.slice(1);
+  return t;
+}
+
+function App() {
+  const [title, setTitle] = useState("My Notes");
+  const [items, setItems] = useState([]);
+  const [currentText, setCurrentText] = useState("");
+  const [isListening, setIsListening] = useState(false);
+  const [interimText, setInterimText] = useState("");
+  const [error, setError] = useState("");
+  const [showInstructions, setShowInstructions] = useState(true);
+  const [installPrompt, setInstallPrompt] = useState(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const [toast, setToast] = useState("");
+
+  // Table builder
+  const [showTableBuilder, setShowTableBuilder] = useState(false);
+  const [tableHeaderText, setTableHeaderText] = useState("");
+  const [tableRowTexts, setTableRowTexts] = useState([]);
+  const [tableActiveRow, setTableActiveRow] = useState(""); // current dictating row
+
+  const recognitionRef = useRef(null);
+  const finalTranscriptRef = useRef("");
+  const itemsRef = useRef([]);
+  const showTableBuilderRef = useRef(false);
+  const tableHeaderTextRef = useRef("");
+  const tableRowTextsRef = useRef([]);
+  const tableActiveRowRef = useRef("");
+
+  useEffect(() => { itemsRef.current = items; }, [items]);
+  useEffect(() => { showTableBuilderRef.current = showTableBuilder; }, [showTableBuilder]);
+  useEffect(() => { tableHeaderTextRef.current = tableHeaderText; }, [tableHeaderText]);
+  useEffect(() => { tableRowTextsRef.current = tableRowTexts; }, [tableRowTexts]);
+  useEffect(() => { tableActiveRowRef.current = tableActiveRow; }, [tableActiveRow]);
+
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(""), 1800);
+  };
+
+  // PWA install prompt
+  useEffect(() => {
+    const handler = (e) => { e.preventDefault(); setInstallPrompt(e); setShowInstallBanner(true); };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+
+  // ---- Helpers used by the recognition handler ----
+  const eraseLastItem = () => {
+    if (itemsRef.current.length > 0) {
+      const last = itemsRef.current[itemsRef.current.length - 1];
+      setItems(prev => prev.slice(0, -1));
+      showToast(last.type === "table" ? "Removed last table" : "Removed last bullet");
+    } else {
+      showToast("Nothing to erase");
+    }
+  };
+
+  const appendToActiveTableRow = (txt) => {
+    if (!txt) return;
+    if (tableHeaderTextRef.current === "" && tableActiveRowRef.current === "" && tableRowTextsRef.current.length === 0) {
+      // Nothing yet — first speech becomes the header row
+      setTableHeaderText(t => (t ? t + " " + txt : txt).trim());
+    } else if (tableHeaderTextRef.current !== "" && tableActiveRowRef.current === "" && tableRowTextsRef.current.length === 0) {
+      // Headers exist already — start the first data row
+      setTableActiveRow(r => (r ? r + " " + txt : txt).trim());
+    } else {
+      setTableActiveRow(r => (r ? r + " " + txt : txt).trim());
+    }
+  };
+
+  const commitActiveTableRow = () => {
+    const cur = tableActiveRowRef.current.trim();
+    if (cur) {
+      setTableRowTexts(prev => [...prev, cur]);
+      setTableActiveRow("");
+    }
+  };
+
+  const finishTable = () => {
+    // Commit any in-progress row
+    if (tableActiveRowRef.current.trim()) {
+      const cur = tableActiveRowRef.current.trim();
+      setTableRowTexts(prev => [...prev, cur]);
+      setTableActiveRow("");
+      // Use freshly-pushed value for build-table call below
+      setTimeout(() => buildAndInsertTable([...tableRowTextsRef.current, cur]), 50);
+    } else {
+      buildAndInsertTable(tableRowTextsRef.current);
+    }
+  };
+
+  const buildAndInsertTable = (rowTextsOverride) => {
+    const headerText = tableHeaderTextRef.current.trim();
+    const rowTexts = rowTextsOverride || tableRowTextsRef.current;
+
+    const splitRow = (s) => s.split(/[,;]/).map(c => c.trim()).filter((_, i, arr) => i < arr.length || true);
+    const headerCells = splitRow(headerText);
+    const dataRows = rowTexts.map(splitRow).filter(r => r.some(c => c.length > 0));
+
+    if (headerCells.length === 0 && dataRows.length === 0) {
+      showToast("No table content yet");
+      closeTableBuilder(true);
+      return;
+    }
+
+    const colCount = Math.max(headerCells.length, ...dataRows.map(r => r.length), 1);
+    const padded = (cells) => {
+      const arr = cells.slice(0, colCount);
+      while (arr.length < colCount) arr.push("");
+      return arr;
+    };
+
+    const headers = headerCells.length > 0 ? padded(headerCells) :
+      Array.from({length: colCount}, (_, i) => "Column " + (i + 1));
+    const rows = dataRows.map(padded);
+
+    setItems(prev => [...prev, { type: "table", headers, rows }]);
+    showToast("Table added to your notes");
+    closeTableBuilder(true);
+  };
+
+  const closeTableBuilder = (resumeMicMode = true) => {
+    setShowTableBuilder(false);
+    setTableHeaderText(""); setTableRowTexts([]); setTableActiveRow("");
+    finalTranscriptRef.current = "";
+    setInterimText("");
+    setCurrentText("");
+  };
+
+  const openTableBuilder = () => {
+    setTableHeaderText(""); setTableRowTexts([]); setTableActiveRow("");
+    setShowTableBuilder(true);
+    finalTranscriptRef.current = "";
+  };
+
+  // === Speech recognition setup ===
+  useEffect(() => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      setError("Voice input is not supported in this browser. Please use Chrome, Edge, or Safari. You can still type your notes!");
+      return;
+    }
+
+    const recognition = new SR();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+
+    recognition.onresult = (event) => {
+      let interim = "";
+      let finalText = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) finalText += transcript + " ";
+        else interim += transcript;
+      }
+
+      if (showTableBuilderRef.current) {
+        // ---- TABLE DICTATION MODE ----
+        if (finalText) {
+          let working = wordsToDigits(finalText);
+
+          // Cancel?
+          TABLE_CANCEL_REGEX.lastIndex = 0;
+          if (TABLE_CANCEL_REGEX.test(working)) {
+            closeTableBuilder(true);
+            setInterimText("");
+            return;
+          }
+
+          // Finish?
+          TABLE_FINISH_REGEX.lastIndex = 0;
+          if (TABLE_FINISH_REGEX.test(working)) {
+            const before = working.split(TABLE_FINISH_REGEX)[0].trim();
+            if (before) {
+              // Decide where it goes (header / active row)
+              const segs = before.split(NEXT_ROW_REGEX);
+              segs.forEach((seg, idx) => {
+                const txt = seg.trim();
+                if (idx === 0) appendToActiveTableRow(txt);
+                else { commitActiveTableRow(); appendToActiveTableRow(txt); }
+              });
+            }
+            setTimeout(finishTable, 100);
+            setInterimText("");
+            return;
+          }
+
+          // Process "next row" splits
+          const segments = working.split(NEXT_ROW_REGEX);
+          segments.forEach((seg, idx) => {
+            const txt = seg.trim();
+            if (idx === 0) appendToActiveTableRow(txt);
+            else { commitActiveTableRow(); appendToActiveTableRow(txt); }
+          });
+        }
+        setInterimText(interim);
+        return;
+      }
+
+      // ---- NORMAL DICTATION MODE ----
+      if (finalText) {
+        finalTranscriptRef.current += wordsToDigits(finalText);
+        let working = finalTranscriptRef.current;
+
+        // 1) ERASE
+        ERASE_REGEX.lastIndex = 0;
+        if (ERASE_REGEX.test(working)) {
+          // Strip the erase phrase
+          const stripped = working.replace(ERASE_REGEX, " ").replace(/\s+/g, " ").trim();
+          if (stripped.length > 0) {
+            // Other text was around the command — clear the buffered text
+            showToast("Cleared current text");
+          } else if (itemsRef.current.length > 0) {
+            const last = itemsRef.current[itemsRef.current.length - 1];
+            setItems(prev => prev.slice(0, -1));
+            showToast(last.type === "table" ? "Removed last table" : "Removed last bullet");
+          } else {
+            showToast("Nothing to erase");
+          }
+          finalTranscriptRef.current = "";
+          setCurrentText("");
+          setInterimText(interim);
+          return;
+        }
+
+        // 2) TABLE start
+        TABLE_START_REGEX.lastIndex = 0;
+        if (TABLE_START_REGEX.test(working)) {
+          const before = working.split(TABLE_START_REGEX)[0].trim();
+          if (before) setItems(prev => [...prev, { type: "bullet", text: tidy(before) }]);
+          finalTranscriptRef.current = "";
+          setCurrentText("");
+          setInterimText("");
+          openTableBuilder();
+          return;
+        }
+
+        // 3) NEXT POINT — split into bullets
+        const parts = working.split(NEXT_BULLET_REGEX);
+        if (parts.length > 1) {
+          const completed = parts.slice(0, -1).map(p => tidy(p)).filter(Boolean);
+          if (completed.length > 0) {
+            setItems(prev => [...prev, ...completed.map(t => ({type: "bullet", text: t}))]);
+          }
+          finalTranscriptRef.current = parts[parts.length - 1];
+          setCurrentText(tidy(parts[parts.length - 1]));
+        } else {
+          setCurrentText(tidy(working));
+        }
+      }
+      setInterimText(interim);
+    };
+
+    recognition.onerror = (event) => {
+      if (event.error === "no-speech") return;
+      setError("Voice error: " + event.error + ". You can still type your notes.");
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      if (recognitionRef.current && recognitionRef.current.shouldListen) {
+        try { recognition.start(); } catch (e) {}
+      } else {
+        setIsListening(false);
+      }
+    };
+
+    recognitionRef.current = recognition;
+    recognitionRef.current.shouldListen = false;
+
+    return () => { try { recognition.stop(); } catch (e) {} };
+  }, []);
+
+  const startMic = () => {
+    if (!recognitionRef.current) return;
+    setError("");
+    try {
+      recognitionRef.current.shouldListen = true;
+      recognitionRef.current.start();
+      setIsListening(true);
+    } catch (e) {
+      setError("Could not start microphone. Please allow microphone access.");
+    }
+  };
+
+  const stopMic = () => {
+    if (!recognitionRef.current) return;
+    recognitionRef.current.shouldListen = false;
+    try { recognitionRef.current.stop(); } catch (e) {}
+    setIsListening(false);
+  };
+
+  const toggleListening = () => {
+    if (!recognitionRef.current) {
+      setError("Voice input is not available in this browser.");
+      return;
+    }
+    if (isListening) {
+      stopMic();
+      if (currentText.trim()) {
+        setItems(prev => [...prev, { type: "bullet", text: tidy(currentText) }]);
+        setCurrentText("");
+        finalTranscriptRef.current = "";
+      }
+      setInterimText("");
+    } else {
+      finalTranscriptRef.current = currentText || "";
+      startMic();
+    }
+  };
+
+  const nextPointManual = () => {
+    if (currentText.trim()) {
+      setItems(prev => [...prev, { type: "bullet", text: tidy(currentText) }]);
+      setCurrentText("");
+      finalTranscriptRef.current = "";
+      setInterimText("");
+    }
+  };
+
+  const deleteItem = (index) => setItems(prev => prev.filter((_, i) => i !== index));
+  const clearAll = () => {
+    if (window.confirm("Are you sure you want to erase all your notes?")) {
+      setItems([]); setCurrentText(""); finalTranscriptRef.current = ""; setInterimText("");
+    }
+  };
+
+  const handleInstall = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === "accepted") { setShowInstallBanner(false); setInstallPrompt(null); }
+  };
+
+  // Manual table builder controls
+  const manualAddRow = () => {
+    if (tableActiveRowRef.current.trim()) {
+      setTableRowTexts(prev => [...prev, tableActiveRowRef.current.trim()]);
+      setTableActiveRow("");
+    } else {
+      setTableRowTexts(prev => [...prev, ""]);
+    }
+  };
+
+  const manualRemoveRow = (i) => {
+    setTableRowTexts(prev => prev.filter((_, idx) => idx !== i));
+  };
+
+  // === Exports (unchanged from previous build) ===
+  const getFinalItems = () => {
+    const all = [...items];
+    if (currentText.trim()) all.push({ type: "bullet", text: tidy(currentText) });
+    return all;
+  };
+  const todayStr = () => new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+
+  const exportPDF = () => {
+    const finalItems = getFinalItems();
+    if (finalItems.length === 0) { alert("You have no notes to save yet!"); return; }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const pw = doc.internal.pageSize.getWidth();
+    const ph = doc.internal.pageSize.getHeight();
+    const margin = 20;
+    const maxW = pw - margin * 2;
+    doc.setFont("times", "bold"); doc.setFontSize(22);
+    doc.text(title || "My Notes", pw / 2, 25, { align: "center" });
+    doc.setFont("times", "italic"); doc.setFontSize(12);
+    doc.text(todayStr(), pw / 2, 33, { align: "center" });
+    doc.setLineWidth(0.5); doc.line(margin, 38, pw - margin, 38);
+    doc.setFont("times", "normal"); doc.setFontSize(14);
+    let y = 50;
+    finalItems.forEach((item) => {
+      if (item.type === "bullet") {
+        const wrapped = doc.splitTextToSize("•  " + item.text, maxW);
+        const h = wrapped.length * 8;
+        if (y + h > ph - 20) { doc.addPage(); y = 25; }
+        doc.text(wrapped, margin, y); y += h + 4;
+      } else if (item.type === "table") {
+        if (y + 30 > ph - 20) { doc.addPage(); y = 25; }
+        doc.autoTable({
+          head: [item.headers], body: item.rows, startY: y,
+          margin: { left: margin, right: margin },
+          styles: { font: "times", fontSize: 12, cellPadding: 4 },
+          headStyles: { fillColor: [225, 245, 254], textColor: [13, 71, 161], fontStyle: "bold" },
+          theme: "grid"
+        });
+        y = doc.lastAutoTable.finalY + 8;
+      }
+    });
+    doc.save((title || "My Notes") + ".pdf");
+  };
+
+  const exportWord = () => {
+    const finalItems = getFinalItems();
+    if (finalItems.length === 0) { alert("You have no notes to save yet!"); return; }
+    const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    let parts = [], buf = [];
+    const flush = () => { if (buf.length) { parts.push("<ul>" + buf.map(b => `<li>${esc(b)}</li>`).join("") + "</ul>"); buf = []; } };
+    finalItems.forEach(it => {
+      if (it.type === "bullet") buf.push(it.text);
+      else if (it.type === "table") {
+        flush();
+        const head = `<tr>${it.headers.map(h => `<th style="border:1px solid #999;padding:6px;background:#e1f5fe;">${esc(h)}</th>`).join("")}</tr>`;
+        const body = it.rows.map(r => `<tr>${r.map(c => `<td style="border:1px solid #999;padding:6px;">${esc(c)}</td>`).join("")}</tr>`).join("");
+        parts.push(`<table style="border-collapse:collapse;margin:10px 0;">${head}${body}</table>`);
+      }
+    });
+    flush();
+    const html = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>${esc(title)}</title><style>body{font-family:'Times New Roman',serif;font-size:14pt;}h1{text-align:center;font-size:22pt;}.date{text-align:center;font-style:italic;font-size:12pt;margin-bottom:20px;}ul li{margin-bottom:10px;}table{font-size:12pt;}</style></head><body><h1>${esc(title)}</h1><p class='date'>${todayStr()}</p>${parts.join("\n")}</body></html>`;
+    const blob = new Blob(["﻿", html], { type: "application/msword" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url;
+    a.download = (title || "My Notes") + ".doc";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const exportText = () => {
+    const finalItems = getFinalItems();
+    if (finalItems.length === 0) { alert("You have no notes to save yet!"); return; }
+    const renderTable = (t) => {
+      const all = [t.headers, ...t.rows];
+      const w = t.headers.map((_, ci) => Math.max(...all.map(r => String(r[ci] || "").length)));
+      const sep = "+" + w.map(x => "-".repeat(x + 2)).join("+") + "+";
+      const fmt = (r) => "| " + r.map((c, ci) => String(c || "").padEnd(w[ci])).join(" | ") + " |";
+      const ls = [sep, fmt(t.headers), sep];
+      t.rows.forEach(r => ls.push(fmt(r)));
+      ls.push(sep);
+      return ls.join("\n");
+    };
+    const lines = [title || "My Notes", todayStr(), "=".repeat(40), ""];
+    finalItems.forEach(it => {
+      if (it.type === "bullet") lines.push("• " + it.text);
+      else if (it.type === "table") { lines.push(""); lines.push(renderTable(it)); lines.push(""); }
+    });
+    const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url;
+    a.download = (title || "My Notes") + ".txt";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const splitCells = (s) => s.split(/[,;]/).map(c => c.trim()).filter(c => c.length > 0);
+
+  return (
+    <div>
+      {toast && <div className="toast">{toast}</div>}
+
+      <h1>PaperPad</h1>
+      <div className="subtitle">Speak. We'll write it down for you.</div>
+
+      {showInstallBanner && installPrompt && !isStandalone && (
+        <div className="install-banner">
+          <span>Install PaperPad on your phone for quick access.</span>
+          <span>
+            <button onClick={handleInstall}>Install</button>
+            <button className="close-x" onClick={() => setShowInstallBanner(false)}>X</button>
+          </span>
+        </div>
+      )}
+
+      {isIOS && !isStandalone && showInstructions && (
+        <div className="install-banner">
+          <span>To install on iPhone: tap <b>Share</b>, then <b>"Add to Home Screen"</b>.</span>
+        </div>
+      )}
+
+      {error && <div className="error">{error}</div>}
+
+      {/* INSTRUCTIONS — collapsible */}
+      <div className="card instructions">
+        <details open={showInstructions} onToggle={(e) => setShowInstructions(e.target.open)}>
+          <summary>How to use PaperPad</summary>
+          <p>1. Tap <span className="highlight">Start Listening</span> and just speak.</p>
+          <p>2. Say <span className="highlight">"next point"</span> when you're ready for a new bullet.</p>
+          <p>3. Say <span className="highlight">"erase that"</span> if you make a mistake.</p>
+          <p>4. Say <span className="highlight">"make a table"</span> to add a table.</p>
+          <p>5. When you're finished, tap one of the green <b>Save</b> buttons.</p>
+          <div className="voice-cmds" style={{marginTop: "10px"}}>
+            <span className="cmd"><b>Erase commands:</b> "erase that", "scratch that", "delete the last bullet", "remove that"</span>
+            <span className="cmd"><b>Table commands (while building):</b> "next row", "finish table", "cancel table"</span>
+          </div>
+        </details>
+      </div>
+
+      {/* MAIN DICTATION CARD */}
+      <div className="card">
+        <label htmlFor="title">Title:</label>
+        <input id="title" type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="What are these notes about?" />
+
+        <label>
+          What you're saying
+          <span className={"status " + (isListening ? "status-on" : "status-off")}>
+            {isListening ? "Microphone ON" : "Microphone OFF"}
+          </span>
+        </label>
+        <textarea
+          value={currentText}
+          onChange={(e) => { setCurrentText(e.target.value); finalTranscriptRef.current = e.target.value; }}
+          placeholder="Tap Start Listening and speak. Or type here."
+        />
+        {interimText && <div className="live-preview"><em>Hearing: </em>{interimText}</div>}
+
+        <div className="button-row">
+          <button className={"btn " + (isListening ? "btn-listening" : "btn-listen")} onClick={toggleListening}>
+            {isListening ? "Stop Listening" : "Start Listening"}
+          </button>
+          <button className="btn btn-add" onClick={nextPointManual}>Next Point</button>
+          <button className="btn btn-table" onClick={openTableBuilder}>Add Table</button>
+        </div>
+      </div>
+
+      {/* TABLE BUILDER */}
+      {showTableBuilder && (
+        <div className="card table-builder">
+          <h2>Building a Table</h2>
+          <p className="hint">
+            Speak (or type) the column names first, then each row.
+            Use <b>commas</b> between cells. Say <b>"next row"</b> between rows,
+            and <b>"finish table"</b> when you're done.
+          </p>
+
+          <label>Header row (column names):</label>
+          <input
+            type="text"
+            value={tableHeaderText}
+            onChange={(e) => setTableHeaderText(e.target.value)}
+            placeholder="e.g. Name, Age, City"
+          />
+
+          <label>Rows so far:</label>
+          {tableRowTexts.length === 0 && tableActiveRow.trim() === "" && (
+            <div className="empty-state" style={{padding:"10px"}}>No rows yet. Speak a row, separated by commas.</div>
+          )}
+          {tableRowTexts.map((rt, ri) => (
+            <div key={ri} className="row-line">
+              <span className="row-num">{ri + 1}.</span>
+              <input
+                type="text"
+                value={rt}
+                onChange={(e) => setTableRowTexts(prev => prev.map((x, i) => i === ri ? e.target.value : x))}
+              />
+              <button className="btn btn-delete" onClick={() => manualRemoveRow(ri)}>X</button>
+            </div>
+          ))}
+
+          <label style={{marginTop: "8px"}}>Currently speaking:</label>
+          <input
+            type="text"
+            value={tableActiveRow}
+            onChange={(e) => setTableActiveRow(e.target.value)}
+            placeholder="The row you are dictating right now."
+          />
+
+          <div className="button-row">
+            <button className="btn btn-add" onClick={manualAddRow}>Add Row</button>
+            <button className="btn btn-primary" onClick={finishTable}>Finish Table</button>
+            <button className="btn btn-clear" onClick={() => closeTableBuilder(true)}>Cancel</button>
+          </div>
+
+          {/* live preview */}
+          {(tableHeaderText.trim() || tableRowTexts.length > 0 || tableActiveRow.trim()) && (
+            <div style={{marginTop: "12px"}}>
+              <label>Preview:</label>
+              <table className="notes-table">
+                <thead>
+                  <tr>
+                    {(splitCells(tableHeaderText).length > 0 ? splitCells(tableHeaderText) : ["(header)"]).map((h, i) => <th key={i}>{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...tableRowTexts, tableActiveRow].filter(t => t.trim()).map((rt, ri) => {
+                    const cells = splitCells(rt);
+                    return <tr key={ri}>{cells.map((c, ci) => <td key={ci}>{c}</td>)}</tr>;
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* NOTES */}
+      <div className="card">
+        <h2 style={{margin:"0 0 8px 0", color:"#0d47a1", fontSize:"22px"}}>Your notes</h2>
+        {items.length === 0 ? (
+          <div className="empty-state">No notes yet. Start speaking above.</div>
+        ) : (
+          <ul className="item-list">
+            {items.map((item, i) => (
+              <li key={i} className={"item-row " + (item.type === "table" ? "table-item" : "")}>
+                {item.type === "bullet" ? (
+                  <>
+                    <span className="bullet-dot">&bull;</span>
+                    <span className="bullet-text">{item.text}</span>
+                    <button className="btn btn-delete" onClick={() => deleteItem(i)}>Remove</button>
+                  </>
+                ) : (
+                  <div style={{flex: 1, width: "100%"}}>
+                    <table className="notes-table">
+                      <thead><tr>{item.headers.map((h, hi) => <th key={hi}>{h}</th>)}</tr></thead>
+                      <tbody>{item.rows.map((r, ri) => <tr key={ri}>{r.map((c, ci) => <td key={ci}>{c}</td>)}</tr>)}</tbody>
+                    </table>
+                    <div style={{textAlign: "right"}}>
+                      <button className="btn btn-delete" onClick={() => deleteItem(i)}>Remove Table</button>
+                    </div>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {items.length > 0 && (
+          <div style={{textAlign: "center", marginTop: "10px"}}>
+            <button className="btn btn-clear btn-small" onClick={clearAll}>Erase all notes</button>
+          </div>
+        )}
+      </div>
+
+      {/* EXPORT */}
+      <div className="card export-section">
+        <h2 style={{margin:"0 0 8px 0", color:"#0d47a1", fontSize:"22px"}}>Save your notes</h2>
+        <div className="button-row">
+          <button className="btn btn-export-pdf" onClick={exportPDF}>Save as PDF</button>
+          <button className="btn btn-export-word" onClick={exportWord}>Save as Word</button>
+          <button className="btn btn-export-txt" onClick={exportText}>Save as Text</button>
+        </div>
+      </div>
+
+      <div className="footer">Made with care for note-takers everywhere.</div>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch((err) => console.warn("SW failed:", err));
+  });
+}
+</script>
+</body>
+</html>
